@@ -1,369 +1,342 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en" data-mode="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Grok</title>
+<link rel="icon" href="icons/grok.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=15">
 <script src="icons/lucide.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js" defer></script>
 </head>
 <body>
 
-<!-- ═══ 侧边栏 ═══ -->
 <aside id="sidebar">
   <div class="side-head">
     <div class="brand">
-      <span class="brand-logo"></span>
+      <span class="brand-logo" aria-hidden="true"></span>
       <span class="brand-name">Grok</span>
-      <button id="btnCollapse" class="icon-btn sm" title="收起侧栏" data-ic="panel-left"></button>
+      <button id="btnCollapse" class="icon-btn sm" title="Collapse" data-ic="panel-left"></button>
     </div>
-    <button id="btnNew" class="btn-new"><span data-ic="pen-square"></span>新对话</button>
+    <button id="btnNew" class="btn-new"><span data-ic="pen-square"></span>New chat</button>
     <div class="side-search">
       <span data-ic="search"></span>
-      <input id="convSearch" type="text" placeholder="搜索对话…">
+      <input id="convSearch" type="text" placeholder="Search" autocomplete="off">
     </div>
   </div>
 
   <nav class="side-nav">
-    <a class="nav-link active" data-view="chat"><span data-ic="message-square"></span>对话</a>
-    <a class="nav-link" data-view="imagine"><span data-ic="images"></span>Imagine</a>
-    <a class="nav-link" data-view="skills"><span data-ic="puzzle"></span>技能</a>
-    <a class="nav-link" data-view="connectors"><span data-ic="blocks"></span>连接器</a>
-    <a class="nav-link" data-view="projects"><span data-ic="folder"></span>项目</a>
+    <a class="nav-link active" data-view="chat" role="button"><span data-ic="message-square"></span>Chat</a>
+    <a class="nav-link" data-view="imagine" role="button"><span data-ic="images"></span>Imagine</a>
+    <a class="nav-link" data-view="skills" role="button"><span data-ic="puzzle"></span>Skills</a>
+    <a class="nav-link" data-view="connectors" role="button"><span data-ic="blocks"></span>Connectors</a>
   </nav>
 
   <div class="side-scroll">
+    <div class="hist-label">History</div>
     <nav id="convList" class="conv-list"></nav>
-    <div id="convEmpty" class="conv-empty hidden">暂无对话,点击「新对话」开始</div>
+    <div id="convEmpty" class="conv-empty hidden">No conversations</div>
   </div>
 
   <div class="side-foot">
-    <button id="btnSettings" class="user-card">
-      <span class="user-avatar">✦</span>
+    <button id="btnSettings" class="user-card" type="button">
+      <span class="user-avatar">G</span>
       <span class="user-info">
-        <span class="user-name" id="userPlan">演示模式</span>
-        <span class="user-sub">点击配置 API</span>
+        <span class="user-name" id="userPlan">Guest</span>
+        <span class="user-sub" id="userSub">Settings</span>
       </span>
       <span data-ic="settings-2"></span>
     </button>
   </div>
 </aside>
 
-<!-- ═══ 主区域 ═══ -->
 <main id="main">
   <header id="topbar">
-    <button id="btnSide" class="icon-btn" title="展开侧栏" data-ic="panel-left"></button>
-    <div class="model-select">
-      <button id="modelBtn" class="model-btn"><span id="modelName"></span> <span class="caret" data-ic="chevron-down"></span></button>
-      <div id="modelMenu" class="model-menu hidden"></div>
-    </div>
+    <button id="btnSide" class="icon-btn" title="Sidebar" data-ic="panel-left"></button>
     <div class="spacer"></div>
-    <button id="btnMode" class="icon-btn" title="切换明暗模式" data-ic="moon"></button>
-    <button id="btnArtifacts" class="icon-btn" title="Artifacts 面板" data-ic="wand-2"></button>
+    <button id="btnPrivate" class="top-link" type="button" title="Temporary chat">
+      <span data-ic="eye-off"></span><s>Private</s>
+    </button>
+    <button id="btnTopImagine" class="top-link" type="button" title="Imagine">
+      <span data-ic="images"></span><s>Imagine</s>
+    </button>
   </header>
 
   <div id="chatScroll">
     <div id="welcome" class="welcome">
-      <div class="w-logo"></div>
-      <h1 id="wTitle">想知道什么?</h1>
-      <div class="chips">
-        <button class="chip" data-i="pen-square">帮我写一篇周报</button>
-        <button class="chip" data-i="globe">做一个响应式落地页</button>
-        <button class="chip" data-i="telescope">分析这段数据的趋势</button>
-        <button class="chip" data-i="brain">解释一下 Transformer</button>
-      </div>
+      <div class="w-logo" aria-hidden="true"></div>
+      <h1 id="wTitle">What do you want to know?</h1>
     </div>
     <div id="chat"></div>
   </div>
 
-  <!-- ═══ 输入区 ═══ -->
   <div id="composerWrap">
-    <div id="attachBar" class="attach-bar hidden"></div>
+    <div id="connBanner" class="conn-banner hidden">
+      <div class="conn-banner-icons">
+        <span data-ic="github"></span>
+        <span data-ic="hard-drive"></span>
+        <span data-ic="mail"></span>
+        <span data-ic="calendar"></span>
+      </div>
+      <div class="conn-banner-text">
+        <b>Connect your apps</b>
+        <span>Let Grok work with GitHub, Drive, Gmail, and more</span>
+      </div>
+      <button id="connBannerGo" class="btn-outline sm" type="button">Connect</button>
+      <button id="connBannerDismiss" class="icon-btn sm" type="button" title="Dismiss" data-ic="x"></button>
+    </div>
+
     <div id="composer">
-      <textarea id="input" rows="1" placeholder="想知道什么?"></textarea>
-      <div class="composer-tools">
-        <div class="tools-left">
-          <button id="btnAttach" class="tool ic-only" title="上传文件/图片" data-ic="paperclip"></button>
-          <button id="tglImagine"  class="tool toggle" title="Imagine 图像生成"><span data-ic="image"></span><s>Imagine</s></button>
-          <button id="tglSearch"   class="tool toggle" title="联网搜索"><span data-ic="globe"></span><s>DeepSearch</s></button>
-          <button id="tglResearch" class="tool toggle" title="深度研究"><span data-ic="telescope"></span><s>DeeperSearch</s></button>
-          <button id="tglThink"    class="tool toggle" title="扩展思考"><span data-ic="brain"></span><s>Think</s></button>
-          <button id="btnSkills"    class="tool ic-only" title="技能" data-ic="puzzle"></button>
+      <div id="attachBar" class="attach-bar hidden"></div>
+      <div id="chipBar" class="chip-bar hidden"></div>
+
+      <div class="composer-row">
+        <div class="plus-wrap">
+          <button id="btnPlus" class="tool plus" type="button" title="Add" data-ic="plus"></button>
+          <div id="plusMenu" class="plus-menu hidden">
+            <button type="button" data-act="upload"><span data-ic="paperclip"></span>Upload a file</button>
+            <button type="button" data-act="skills"><span data-ic="puzzle"></span>Skills<span class="chev" data-ic="chevron-right"></span></button>
+            <button type="button" data-act="connectors"><span data-ic="blocks"></span>Add a connector<span class="chev" data-ic="chevron-right"></span></button>
+            <div class="plus-sep"></div>
+            <button type="button" data-act="search" id="pmSearch"><span data-ic="globe"></span>DeepSearch<span class="pm-check"></span></button>
+            <button type="button" data-act="imagine" id="pmImagine"><span data-ic="image"></span>Imagine<span class="pm-check"></span></button>
+          </div>
         </div>
+
+        <textarea id="input" rows="1" placeholder="What do you want to know?"></textarea>
+
         <div class="tools-right">
-          <button id="btnVoice" class="tool ic-only" title="语音输入" data-ic="mic"></button>
-          <button id="btnSend" class="send" title="发送" data-ic="arrow-up"></button>
+          <div class="model-select">
+            <button id="modelBtn" class="mode-pill" type="button" title="Model">
+              <span id="modelName">Fast</span>
+              <span class="caret" data-ic="chevron-down"></span>
+            </button>
+            <div id="modelMenu" class="model-menu hidden"></div>
+          </div>
+          <button id="btnVoice" class="tool ic-only" type="button" title="Dictation" data-ic="mic"></button>
+          <button id="btnVoiceMode" class="tool ic-only" type="button" title="Voice" data-ic="audio-lines"></button>
+          <button id="btnSend" class="send" type="button" title="Send" disabled data-ic="arrow-up"></button>
         </div>
       </div>
     </div>
-    <p class="disclaimer">Grok 可能会犯错,请核查重要信息。</p>
-    <input type="file" id="fileInput" multiple hidden accept="image/*,.txt,.md,.js,.py,.json,.csv,.html,.css">
+    <p class="disclaimer">Grok can make mistakes. Check important info.</p>
+    <input type="file" id="fileInput" multiple hidden accept="image/*,.txt,.md,.js,.ts,.py,.json,.csv,.html,.css,.pdf,.docx,.pptx,.xlsx">
   </div>
 </main>
 
-<!-- ═══ Artifacts 面板 ═══ -->
-<section id="artifacts" class="hidden">
-  <header class="art-head">
-    <span class="art-title"><span data-ic="wand-2"></span> Artifacts</span>
-    <div class="art-tabs">
-      <button id="tabPreview" class="art-tab active">预览</button>
-      <button id="tabCode"    class="art-tab">代码</button>
-    </div>
-    <button id="artCopy"  class="icon-btn" title="复制代码" data-ic="copy"></button>
-    <button id="artClose" class="icon-btn" title="关闭" data-ic="x"></button>
-  </header>
-  <iframe id="artFrame" sandbox="allow-scripts"></iframe>
-  <pre id="artCode" class="hidden"><code></code></pre>
+<!-- Voice session -->
+<section id="voiceView" class="hidden">
+  <div class="voice-orb" id="voiceOrb"></div>
+  <p class="voice-hint" id="voiceHint">You may start speaking</p>
+  <p class="voice-persona">Grok · Assistant</p>
+  <div class="voice-controls">
+    <button id="voiceAttach" class="icon-btn lg" type="button" title="Attach" data-ic="paperclip"></button>
+    <button id="voiceStop" class="btn-primary voice-stop" type="button"><span data-ic="square"></span>Stop</button>
+  </div>
 </section>
 
-<!-- ═══ 技能弹窗 ═══ -->
-<dialog id="dlgSkills" class="picker-dlg">
-  <header class="picker-head">
-    <div class="picker-title"><span data-ic="puzzle"></span> 技能</div>
-    <button class="icon-btn" data-close="dlgSkills" data-ic="x"></button>
-  </header>
-  <p class="hint">选择一个技能,它会为本次对话设置专属的角色与工作方式。再次点击可取消。</p>
-  <div id="skillGrid" class="picker-grid"></div>
-</dialog>
-
-<!-- ═══ 连接器弹窗 ═══ -->
-<dialog id="dlgConnectors" class="picker-dlg">
-  <header class="picker-head">
-    <div class="picker-title"><span data-ic="blocks"></span> 连接器</div>
-    <button class="icon-btn" data-close="dlgConnectors" data-ic="x"></button>
-  </header>
-  <p class="hint">连接第三方数据源,让 AI 能访问你的外部信息(演示环境模拟授权流程,不会真实连接)。</p>
-  <div id="connList" class="conn-list"></div>
-</dialog>
-
-<!-- ═══ 项目弹窗 ═══ -->
-<dialog id="dlgProjects" class="picker-dlg">
-  <header class="picker-head">
-    <div class="picker-title"><span data-ic="folder"></span> 项目</div>
-    <button class="icon-btn" data-close="dlgProjects" data-ic="x"></button>
-  </header>
-  <p class="hint">用项目组织对话。点击项目查看其中的对话;在对话的「移入项目」中归档。</p>
-  <div id="projList" class="conn-list"></div>
-  <button id="btnAddProj" class="btn-outline" style="margin-top:12px"><span data-ic="plus"></span>新建项目</button>
-</dialog>
-
-<!-- ═══ Imagine 图像生成视图 ═══ -->
+<!-- Imagine -->
 <section id="imagineView" class="hidden">
   <header class="imagine-head">
-    <div class="picker-title"><span data-ic="images"></span> Imagine</div>
-    <button class="icon-btn" id="imagineClose" data-ic="x"></button>
+    <div class="picker-title"><span class="brand-logo sm"></span> Imagine</div>
+    <button class="icon-btn" id="imagineClose" type="button" data-ic="x"></button>
   </header>
   <div class="imagine-body">
+    <div class="imagine-hero">
+      <h2>What will you imagine?</h2>
+    </div>
     <div class="imagine-controls">
-      <textarea id="imaginePrompt" rows="2" placeholder="描述你想生成的画面,例如:赛博朋克风格的东京街道,霓虹灯,雨夜…"></textarea>
+      <textarea id="imaginePrompt" rows="2" placeholder="Describe an image…"></textarea>
       <div class="imagine-opts">
         <div class="seg" id="imgRatio">
-          <button data-v="1:1" class="active">1:1</button>
-          <button data-v="16:9">16:9</button>
-          <button data-v="9:16">9:16</button>
+          <button type="button" data-v="1:1" class="active">1:1</button>
+          <button type="button" data-v="16:9">16:9</button>
+          <button type="button" data-v="9:16">9:16</button>
         </div>
-        <div class="seg" id="imgStyle">
-          <button data-v="realistic" class="active">写实</button>
-          <button data-v="anime">动漫</button>
-          <button data-v="art">艺术</button>
-          <button data-v="3d">3D</button>
-        </div>
-        <button id="imagineGo" class="btn-primary"><span data-ic="sparkles"></span>生成(4 张)</button>
+        <button id="imagineGo" class="btn-primary" type="button"><span data-ic="sparkles"></span>Generate</button>
       </div>
     </div>
     <div id="imagineGrid" class="imagine-grid"></div>
   </div>
 </section>
 
-<!-- ═══ 账户设置弹窗(Grok 风格多分类) ═══ -->
+<!-- Agent editor -->
+<dialog id="dlgAgentEdit" class="picker-dlg agent-edit-dlg">
+  <header class="picker-head">
+    <div class="picker-title" id="agentEditTitle">Create agent</div>
+    <button class="icon-btn" type="button" data-close="dlgAgentEdit" data-ic="x"></button>
+  </header>
+  <label>Name
+    <input id="aeName" placeholder="e.g. Research, Code reviewer" maxlength="40">
+  </label>
+  <label>Instructions
+    <textarea id="aeSys" rows="5" maxlength="4000"
+      placeholder="Role, focus, and how this agent should contribute…"></textarea>
+  </label>
+  <div class="dlg-actions">
+    <button type="button" id="aeCancel" class="btn-outline">Cancel</button>
+    <button type="button" id="aeSave" class="btn-primary">Save</button>
+  </div>
+</dialog>
+
+<!-- Skills (Grok document skills) -->
+<dialog id="dlgSkills" class="picker-dlg">
+  <header class="picker-head">
+    <div class="picker-title">Skills</div>
+    <button class="icon-btn" type="button" data-close="dlgSkills" data-ic="x"></button>
+  </header>
+  <p class="hint">Arm a skill for this conversation. Skills generate and edit documents in chat.</p>
+  <div id="skillGrid" class="picker-grid"></div>
+</dialog>
+
+<!-- Connectors -->
+<dialog id="dlgConnectors" class="picker-dlg">
+  <header class="picker-head">
+    <div class="picker-title">Connectors</div>
+    <button class="icon-btn" type="button" data-close="dlgConnectors" data-ic="x"></button>
+  </header>
+  <p class="hint">Connect apps so Grok can use their data. Demo only — no real OAuth.</p>
+  <div id="connList" class="conn-list"></div>
+</dialog>
+
+<!-- Settings (Grok-style) -->
 <dialog id="dlgSettings" class="settings-dlg">
   <div class="settings-wrap">
-    <!-- 左侧分类导航 -->
     <aside class="settings-nav">
       <div class="settings-head">
-        <span class="user-avatar lg">✦</span>
+        <span class="user-avatar lg">G</span>
         <div class="settings-head-info">
-          <div class="settings-head-name" id="setName">访客用户</div>
-          <div class="settings-head-plan" id="setPlan">演示模式</div>
+          <div class="settings-head-name" id="setName">Guest</div>
+          <div class="settings-head-plan" id="setPlan">Free</div>
         </div>
       </div>
-      <button class="set-tab active" data-tab="account"><span data-ic="user-round"></span>账户</button>
-      <button class="set-tab" data-tab="appearance"><span data-ic="palette"></span>外观</button>
-      <button class="set-tab" data-tab="behavior"><span data-ic="sliders-horizontal"></span>行为</button>
-      <button class="set-tab" data-tab="customize"><span data-ic="sparkles"></span>Customize</button>
-      <button class="set-tab" data-tab="data"><span data-ic="database"></span>数据管理</button>
-      <button class="set-tab" data-tab="usage"><span data-ic="chart-column"></span>使用量</button>
+      <button class="set-tab active" type="button" data-tab="account"><span data-ic="user-round"></span>Account</button>
+      <button class="set-tab" type="button" data-tab="appearance"><span data-ic="palette"></span>Appearance</button>
+      <button class="set-tab" type="button" data-tab="customize"><span data-ic="sparkles"></span>Customize</button>
+      <button class="set-tab" type="button" data-tab="data"><span data-ic="database"></span>Data controls</button>
     </aside>
 
-    <!-- 右上角关闭 -->
-    <button id="dlgClose" class="icon-btn dlg-x" title="关闭" data-ic="x"></button>
+    <button id="dlgClose" class="icon-btn dlg-x" type="button" title="Close" data-ic="x"></button>
 
-    <!-- 右侧内容 -->
     <div class="settings-body">
-
-      <!-- ══ 账户 ══ -->
       <section class="set-panel active" data-panel="account">
-        <h3>账户与 API 配置</h3>
-        <p class="hint">添加多套配置(官方 / 中转站),点击即可切换当前启用;不启用任何配置时为<b>演示模式</b>。Key 仅存于浏览器本地。</p>
-        <div id="profileList" class="profile-list"></div>
-        <button id="btnAddProfile" class="btn-outline"><span data-ic="plus"></span>添加配置</button>
-        <form id="profileForm" class="profile-form hidden">
-          <label>配置名称<input id="pfName" placeholder="如:Grok 官方 / xx 中转站" required></label>
-          <label>接口类型
-            <select id="pfType">
-              <option value="xai">xAI(Grok)</option>
-              <option value="anthropic">Anthropic(Claude 格式)</option>
-              <option value="openai">OpenAI 兼容(GPT / 通用中转)</option>
-            </select>
-          </label>
-          <label>Base URL(留空使用官方地址)<input id="pfUrl" placeholder="https://…/v1/chat/completions"></label>
-          <label>API Key<input id="pfKey" type="password" placeholder="sk-…"></label>
-          <div class="dlg-actions">
-            <button type="button" id="pfCancel" class="btn-outline">取消</button>
-            <button type="submit" class="btn-primary">保存配置</button>
-          </div>
-        </form>
+        <h3>Account</h3>
+        <p class="hint">API key is stored only in this browser and proxied locally. Leave empty for demo mode.</p>
+        <label class="set-field">xAI API Key
+          <input id="apiKey" type="password" placeholder="xai-…" autocomplete="off">
+        </label>
+        <label class="set-field">Base URL <small>Optional proxy / reverse gateway</small>
+          <input id="baseUrl" placeholder="https://api.x.ai/v1/chat/completions">
+        </label>
+        <div class="dlg-actions">
+          <button type="button" id="btnSaveKey" class="btn-primary">Save</button>
+        </div>
       </section>
 
-      <!-- ══ 外观 ══ -->
       <section class="set-panel" data-panel="appearance">
-        <h3>外观</h3>
+        <h3>Appearance</h3>
         <div class="set-row">
-          <div class="set-label"><b>主题</b><small>选择明暗模式或跟随系统</small></div>
+          <div class="set-label"><b>Theme</b><small>Light, dark, or system</small></div>
           <div class="seg" id="segTheme">
-            <button data-v="light">白天</button>
-            <button data-v="dark">黑夜</button>
-            <button data-v="system">系统</button>
-          </div>
-        </div>
-        <div class="set-row">
-          <div class="set-label"><b>强调色</b><small>界面主色调</small></div>
-          <div class="swatches" id="accentSwatches"></div>
-        </div>
-        <div class="set-row">
-          <div class="set-label"><b>字号</b><small>聊天正文大小</small></div>
-          <div class="seg" id="segFont">
-            <button data-v="sm">小</button>
-            <button data-v="md">中</button>
-            <button data-v="lg">大</button>
-          </div>
-        </div>
-        <div class="set-row">
-          <div class="set-label"><b>消息密度</b><small>气泡间距</small></div>
-          <div class="seg" id="segDensity">
-            <button data-v="compact">紧凑</button>
-            <button data-v="cozy">舒适</button>
+            <button type="button" data-v="light">Light</button>
+            <button type="button" data-v="dark" class="active">Dark</button>
+            <button type="button" data-v="system">System</button>
           </div>
         </div>
       </section>
 
-      <!-- ══ 行为 ══ -->
-      <section class="set-panel" data-panel="behavior">
-        <h3>行为</h3>
-        <div class="set-row">
-          <div class="set-label"><b>默认模型</b><small>新对话使用的模型</small></div>
-          <select id="setDefaultModel" class="set-select"></select>
-        </div>
-        <label class="set-toggle-row">
-          <div class="set-label"><b>发送快捷键</b><small>开启后用 Ctrl/⌘ + Enter 发送,Enter 换行</small></div>
-          <span class="switch"><input type="checkbox" id="setCmdEnter"><i></i></span>
-        </label>
-        <label class="set-toggle-row">
-          <div class="set-label"><b>流式输出</b><small>逐字显示回复</small></div>
-          <span class="switch"><input type="checkbox" id="setStream" checked><i></i></span>
-        </label>
-        <label class="set-toggle-row">
-          <div class="set-label"><b>自动滚动</b><small>回复时自动滚到底部</small></div>
-          <span class="switch"><input type="checkbox" id="setAutoScroll" checked><i></i></span>
-        </label>
-        <label class="set-toggle-row">
-          <div class="set-label"><b>显示建议问题</b><small>空对话时展示快捷提问</small></div>
-          <span class="switch"><input type="checkbox" id="setChips" checked><i></i></span>
-        </label>
-        <label class="set-toggle-row">
-          <div class="set-label"><b>发送前确认清空</b><small>删除对话时二次确认</small></div>
-          <span class="switch"><input type="checkbox" id="setConfirmDel"><i></i></span>
-        </label>
-      </section>
-
-      <!-- ══ Customize(对齐 Grok 最新结构) ══ -->
       <section class="set-panel" data-panel="customize">
-        <h3>Customize Grok</h3>
-        <label class="set-toggle-row master">
-          <div class="set-label"><b>启用自定义</b><small>开启后,以下信息将应用于新的对话</small></div>
-          <span class="switch"><input type="checkbox" id="cuEnabled"><i></i></span>
-        </label>
-        <div id="cuFields">
-          <label class="set-field">Grok 应该怎么称呼你?
-            <input id="cuName" placeholder="昵称"></label>
-          <label class="set-field">你是做什么的?
-            <input id="cuJob" placeholder="职业 / 身份"></label>
-          <div class="set-field">Grok 应该具备哪些特质?
-            <small>点击选择,可多选</small>
-            <div class="traits" id="cuTraits"></div>
+        <!-- Exact grok.com Customize layout -->
+        <div class="gcu">
+          <h3 class="gcu-title">Customize Grok</h3>
+
+          <!-- Response style: vertical radio list (official) -->
+          <div id="styleList" class="gcu-styles" role="radiogroup" aria-label="How Grok should respond"></div>
+
+          <div class="gcu-gap"></div>
+
+          <!-- About you -->
+          <div class="gcu-field">
+            <label class="gcu-q" for="cuName">What should Grok call you?</label>
+            <input id="cuName" class="gcu-input" type="text" placeholder="" maxlength="80" autocomplete="nickname">
           </div>
-          <label class="set-field">还有什么想让 Grok 知道的吗?
-            <textarea id="cuAbout" rows="3" placeholder="兴趣、价值观、或任何有助于 Grok 更好回答的信息"></textarea></label>
-          <label class="set-field">自定义指令(高级)
-            <small>直接编写系统提示,填写后将覆盖上面的自动组合</small>
-            <textarea id="cuSystem" rows="3" placeholder="留空则由上面的信息自动组合"></textarea></label>
+          <div class="gcu-field">
+            <label class="gcu-q" for="cuJob">What do you do?</label>
+            <input id="cuJob" class="gcu-input" type="text" placeholder="" maxlength="120">
+          </div>
+          <div class="gcu-field">
+            <div class="gcu-q">What traits should Grok have?</div>
+            <div class="gcu-traits" id="cuTraits"></div>
+          </div>
+          <div class="gcu-field">
+            <label class="gcu-q" for="cuAbout">Anything else Grok should know about you?</label>
+            <textarea id="cuAbout" class="gcu-input gcu-area" rows="3" placeholder="" maxlength="2000"></textarea>
+          </div>
+
+          <div class="gcu-rule"></div>
+
+          <!-- Your Agents -->
+          <div class="gcu-section-head">
+            <div>
+              <div class="gcu-q" style="margin:0">Your Agents</div>
+              <div class="gcu-sub">Customize up to 4 agents for multi-agent mode</div>
+            </div>
+            <button type="button" id="btnAddAgent" class="gcu-add">
+              <span data-ic="plus"></span>Create
+            </button>
+          </div>
+          <div id="agentLibrary" class="gcu-agents"></div>
+
+          <div class="gcu-rule"></div>
+
+          <!-- Memory -->
+          <div class="gcu-q">Memory</div>
+          <label class="gcu-row">
+            <div>
+              <div class="gcu-row-title">Personalize Grok with your conversation history</div>
+              <div class="gcu-sub">Grok may use past chats to improve answers</div>
+            </div>
+            <span class="switch"><input type="checkbox" id="cuMemory"><i></i></span>
+          </label>
+          <div class="gcu-row gcu-row-static">
+            <div>
+              <div class="gcu-row-title">Saved memories</div>
+              <div class="gcu-sub" id="memCount">No memories yet</div>
+            </div>
+            <button id="btnManageMem" type="button" class="gcu-link">Manage</button>
+          </div>
+          <div id="memList" class="mem-list hidden"></div>
         </div>
-        <h4 class="usage-h4">记忆</h4>
-        <label class="set-toggle-row">
-          <div class="set-label"><b>参考记忆</b><small>让 Grok 参考你近期的对话主题,使回答更连贯</small></div>
-          <span class="switch"><input type="checkbox" id="cuMemory"><i></i></span>
-        </label>
       </section>
 
-      <!-- ══ 数据管理 ══ -->
       <section class="set-panel" data-panel="data">
-        <h3>数据管理</h3>
-        <p class="hint">所有数据(对话、配置、偏好)均保存在此浏览器的 localStorage,不上传服务器。</p>
+        <h3>Data controls</h3>
+        <p class="hint">All data stays in this browser’s localStorage.</p>
         <div class="data-card">
-          <div class="set-label"><b>导出全部数据</b><small>下载为 JSON 备份文件</small></div>
-          <button id="btnExport" class="btn-outline"><span data-ic="download"></span>导出</button>
+          <div class="set-label"><b>Export data</b><small>Download a JSON backup</small></div>
+          <button id="btnExport" class="btn-outline" type="button"><span data-ic="download"></span>Export</button>
         </div>
         <div class="data-card">
-          <div class="set-label"><b>导入数据</b><small>从备份文件恢复</small></div>
-          <button id="btnImport" class="btn-outline"><span data-ic="upload"></span>导入</button>
+          <div class="set-label"><b>Import data</b><small>Restore from backup</small></div>
+          <button id="btnImport" class="btn-outline" type="button"><span data-ic="upload"></span>Import</button>
           <input type="file" id="importFile" accept=".json" hidden>
         </div>
-        <div class="data-card">
-          <div class="set-label"><b>导出对话为 Markdown</b><small>当前对话导出为 .md</small></div>
-          <button id="btnExportMd" class="btn-outline"><span data-ic="file-text"></span>导出</button>
+        <div class="data-card danger">
+          <div class="set-label"><b>Delete all chats</b><small>Settings are kept</small></div>
+          <button id="btnClearChats" class="btn-danger" type="button"><span data-ic="trash-2"></span>Delete</button>
         </div>
         <div class="data-card danger">
-          <div class="set-label"><b>清空所有对话</b><small>保留配置与偏好</small></div>
-          <button id="btnClearChats" class="btn-danger"><span data-ic="trash-2"></span>清空对话</button>
-        </div>
-        <div class="data-card danger">
-          <div class="set-label"><b>重置全部数据</b><small>删除所有对话、配置与偏好,不可恢复</small></div>
-          <button id="btnResetAll" class="btn-danger"><span data-ic="triangle-alert"></span>全部重置</button>
+          <div class="set-label"><b>Reset everything</b><small>Chats, key, and preferences</small></div>
+          <button id="btnResetAll" class="btn-danger" type="button"><span data-ic="triangle-alert"></span>Reset</button>
         </div>
       </section>
-
-      <!-- ══ 使用量 ══ -->
-      <section class="set-panel" data-panel="usage">
-        <h3>使用量</h3>
-        <p class="hint">基于本地对话记录的估算(1 token ≈ 4 字符 / 1.5 汉字)。</p>
-        <div class="usage-grid" id="usageStats"></div>
-        <h4 class="usage-h4">近 14 天消息趋势</h4>
-        <div id="usageChart" class="chart-box"></div>
-        <h4 class="usage-h4">模型 token 占比</h4>
-        <div class="chart-row">
-          <div id="usageDonut" class="chart-donut"></div>
-          <div id="usageLegend" class="chart-legend"></div>
-        </div>
-      </section>
-
     </div>
   </div>
 </dialog>
 
-<script src="app.js?v=7" defer></script>
+<script src="app.js?v=15" defer></script>
 </body>
 </html>
