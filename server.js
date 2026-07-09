@@ -87,6 +87,210 @@ function toOpenAI(messages) {
   });
 }
 
+/* ═══════════ REAL web search (DuckDuckGo HTML, no key needed) ═══════════ */
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36';
+const stripTags = s => String(s)
+  .replace(/<script[\s\S]*?<\/script>/gi, ' ').replace(/<style[\s\S]*?<\/style>/gi, ' ')
+  .replace(/<[^>]+>/g, ' ')
+  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  .replace(/&quot;/g, '"').replace(/&#x?\w+;/g, ' ')
+  .replace(/\s+/g, ' ').trim();
+
+async function webSearch(query, max = 6) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query),
+      { headers: { 'User-Agent': UA }, signal: ctl.signal });
+    const html = await r.text();
+    const out = [];
+    const re = /class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+    let m;
+    while ((m = re.exec(html)) && out.length < max) {
+      let url = m[1];
+      const uddg = url.match(/uddg=([^&]+)/);
+      if (uddg) url = decodeURIComponent(uddg[1]);
+      if (!/^https?:/.test(url)) continue;
+      out.push({ title: stripTags(m[2]).slice(0, 120), url, snippet: stripTags(m[3]).slice(0, 240) });
+    }
+    return out;
+  } finally { clearTimeout(t); }
+}
+
+async function fetchPage(url, maxLen = 4000) {
+  const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 10000);
+  try {
+    const r = await fetch(url, { headers: { 'User-Agent': UA }, signal: ctl.signal, redirect: 'follow' });
+    const type = r.headers.get('content-type') || '';
+    if (!type.includes('html') && !type.includes('text')) return `(non-text content: ${type})`;
+    return stripTags(await r.text()).slice(0, maxLen);
+  } finally { clearTimeout(t); }
+}
+
+/* Runs real search, streams REAL progress steps, returns context + sources */
+async function runSearch(res, query, deep) {
+  const t0 = Date.now();
+  const step = s => res.write(`data: ${JSON.stringify({ step: s })}\n\n`);
+  step(`Searching the web: "${query.slice(0, 80)}"`);
+  let results = [];
+  try { results = await webSearch(query, deep ? 8 : 6); }
+  catch (e) { step('Search failed: ' + e.message); }
+  if (results.length) {
+    step(`Found ${results.length} results: ` + [...new Set(results.map(r => {
+      try { return new URL(r.url).hostname.replace(/^www\./, ''); } catch { return ''; }
+    }))].filter(Boolean).slice(0, 5).join(', '));
+  }
+  const pages = [];
+  if (deep && results.length) {
+    for (const r of results.slice(0, 2)) {
+      let host = ''; try { host = new URL(r.url).hostname; } catch {}
+      step(`Reading ${host}…`);
+      try { pages.push({ url: r.url, text: await fetchPage(r.url, 3000) }); }
+      catch { step(`Could not read ${host}`); }
+    }
+  }
+  const elapsed = ((Date.now() - t0) / 1000).toFixed(1) + 's · ' + results.length + ' sources';
+  res.write(`data: ${JSON.stringify({ stepsDone: true, elapsed })}\n\n`);
+  return { results, pages, elapsed };
+}
+
+/* ═══════════ REAL connector tools (public APIs) ═══════════ */
+const TOOL_DEFS = {
+  web: [{
+    type: 'function', function: {
+      name: 'web_search', description: 'Search the live web (DuckDuckGo). Returns titles, URLs, snippets.',
+      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    },
+  }, {
+    type: 'function', function: {
+      name: 'fetch_webpage', description: 'Fetch a URL and return its readable text content.',
+      parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+    },
+  }],
+  github: [{
+    type: 'function', function: {
+      name: 'github_search', description: 'Search GitHub for repositories, issues, or code.',
+      parameters: { type: 'object', properties: {
+        type: { type: 'string', enum: ['repositories', 'issues', 'code'] },
+        query: { type: 'string', description: 'GitHub search syntax supported' },
+      }, required: ['type', 'query'] },
+    },
+  }, {
+    type: 'function', function: {
+      name: 'github_get_file', description: 'Read a file from a GitHub repository.',
+      parameters: { type: 'object', properties: {
+        repo: { type: 'string', description: 'owner/name' },
+        path: { type: 'string' }, ref: { type: 'string' },
+      }, required: ['repo', 'path'] },
+    },
+  }],
+  weather: [{
+    type: 'function', function: {
+      name: 'get_weather', description: 'Current weather and 3-day forecast for a city (Open-Meteo).',
+      parameters: { type: 'object', properties: { location: { type: 'string' } }, required: ['location'] },
+    },
+  }],
+  hn: [{
+    type: 'function', function: {
+      name: 'hn_search', description: 'Search Hacker News stories (Algolia API).',
+      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+    },
+  }],
+};
+
+async function execTool(name, args, ctx) {
+  const jfetch = async (url, headers = {}) => {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 12000);
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': UA, ...headers }, signal: ctl.signal });
+      if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 200)}`);
+      return r.json();
+    } finally { clearTimeout(t); }
+  };
+  switch (name) {
+    case 'web_search':
+      return JSON.stringify(await webSearch(String(args.query || ''), 6));
+    case 'fetch_webpage':
+      if (!/^https?:\/\//.test(args.url || '')) throw new Error('invalid url');
+      return await fetchPage(args.url, 5000);
+    case 'github_search': {
+      const type = ['repositories', 'issues', 'code'].includes(args.type) ? args.type : 'repositories';
+      const gh = ctx.ghToken ? { Authorization: 'Bearer ' + ctx.ghToken } : {};
+      const j = await jfetch(`https://api.github.com/search/${type}?per_page=5&q=` +
+        encodeURIComponent(String(args.query || '')), { Accept: 'application/vnd.github+json', ...gh });
+      return JSON.stringify((j.items || []).map(it => type === 'repositories'
+        ? { repo: it.full_name, stars: it.stargazers_count, desc: (it.description || '').slice(0, 150), url: it.html_url }
+        : type === 'issues'
+          ? { title: it.title, state: it.state, url: it.html_url, comments: it.comments }
+          : { repo: it.repository?.full_name, path: it.path, url: it.html_url }));
+    }
+    case 'github_get_file': {
+      if (!/^[\w.-]+\/[\w.-]+$/.test(args.repo || '')) throw new Error('repo must be owner/name');
+      const gh = ctx.ghToken ? { Authorization: 'Bearer ' + ctx.ghToken } : {};
+      const j = await jfetch(`https://api.github.com/repos/${args.repo}/contents/` +
+        encodeURI(String(args.path || '')) + (args.ref ? `?ref=${encodeURIComponent(args.ref)}` : ''),
+        { Accept: 'application/vnd.github+json', ...gh });
+      if (j.content) return Buffer.from(j.content, 'base64').toString('utf8').slice(0, 6000);
+      throw new Error('not a file');
+    }
+    case 'get_weather': {
+      const g = await jfetch('https://geocoding-api.open-meteo.com/v1/search?count=1&name=' +
+        encodeURIComponent(String(args.location || '')));
+      const loc = g.results?.[0];
+      if (!loc) throw new Error('location not found');
+      const w = await jfetch(`https://api.open-meteo.com/v1/forecast?latitude=${loc.latitude}&longitude=${loc.longitude}` +
+        '&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m' +
+        '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3');
+      return JSON.stringify({ place: `${loc.name}, ${loc.country}`, current: w.current, daily: w.daily });
+    }
+    case 'hn_search': {
+      const j = await jfetch('https://hn.algolia.com/api/v1/search?hitsPerPage=5&query=' +
+        encodeURIComponent(String(args.query || '')));
+      return JSON.stringify((j.hits || []).map(h => ({
+        title: h.title, url: h.url || `https://news.ycombinator.com/item?id=${h.objectID}`,
+        points: h.points, comments: h.num_comments })));
+    }
+    default: throw new Error('unknown tool ' + name);
+  }
+}
+
+/* Agentic tool loop: model decides which real APIs to call, we execute, repeat */
+async function toolLoop(res, { apiKey, baseUrl, model, messages, connectors, ghToken }) {
+  const tools = connectors.flatMap(c => TOOL_DEFS[c] || []);
+  const step = s => res.write(`data: ${JSON.stringify({ step: s })}\n\n`);
+  const url = baseUrl || XAI_CHAT;
+  const t0 = Date.now();
+  let msgs = toOpenAI(messages), calls = 0;
+  for (let round = 0; round < 5; round++) {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model, messages: msgs, tools, tool_choice: 'auto' }),
+    });
+    if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 300)}`);
+    const j = await r.json();
+    const m = j.choices?.[0]?.message;
+    if (!m) throw new Error('empty response');
+    if (m.tool_calls?.length) {
+      msgs.push(m);
+      for (const tc of m.tool_calls.slice(0, 4)) {
+        let args = {}; try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+        calls++;
+        step(`${tc.function.name}(${JSON.stringify(args).slice(0, 90)})`);
+        let result;
+        try { result = await execTool(tc.function.name, args, { ghToken }); }
+        catch (e) { result = 'Error: ' + e.message; }
+        msgs.push({ role: 'tool', tool_call_id: tc.id, content: String(result).slice(0, 9000) });
+      }
+      continue;
+    }
+    if (calls) res.write(`data: ${JSON.stringify({ stepsDone: true,
+      elapsed: ((Date.now() - t0) / 1000).toFixed(1) + 's · ' + calls + ' tool calls' })}\n\n`);
+    return m.content || '';
+  }
+  res.write(`data: ${JSON.stringify({ stepsDone: true, elapsed: 'tool limit reached' })}\n\n`);
+  return 'I hit the tool-call limit before finishing. Here is what I gathered so far — please narrow the question.';
+}
+
 async function streamOnce(apiKey, baseUrl, model, messages, onDelta) {
   const url = baseUrl || XAI_CHAT;
   const resp = await fetch(url, {
@@ -212,6 +416,8 @@ async function handleChat(req, res) {
         apiKey = '',
         baseUrl = '',
         agents = null,
+        connectors = [],
+        githubToken = '',
       } = JSON.parse(body);
 
       res.writeHead(200, {
@@ -224,6 +430,12 @@ async function handleChat(req, res) {
 
       if (/heavy/i.test(model || '')) {
         return multiAgent(res, { apiKey, baseUrl, model, messages, lastUser, agents });
+      }
+
+      /* ── REAL DeepSearch: actual DuckDuckGo search with live progress ── */
+      let search = null;
+      if ((features.search || features.research) && lastUser?.content) {
+        search = await runSearch(res, lastUser.content, !!features.research);
       }
 
       if (!apiKey) {
@@ -239,29 +451,49 @@ async function handleChat(req, res) {
             await new Promise(r => setTimeout(r, 260));
           }
         }
-        if (features.search) {
-          const steps = [
-            'Planning search queries…',
-            'Searching the web and X…',
-            'Reading top sources…',
-            'Cross-checking facts…',
-            'Synthesizing answer…',
-          ];
-          for (const s of steps) {
-            res.write(`data: ${JSON.stringify({ step: s })}\n\n`);
-            await new Promise(r => setTimeout(r, 420));
-          }
-          res.write(`data: ${JSON.stringify({ stepsDone: true, elapsed: '2.1s · 12 sources' })}\n\n`);
+        /* Demo mode + search: answer built from REAL results */
+        if (search?.results.length) {
+          const list = search.results.map((r, i) =>
+            `${i + 1}. **[${r.title || r.url}](${r.url})**\n   ${r.snippet}`).join('\n');
+          return streamDemo(res, `### Live web results for "${(lastUser.content || '').slice(0, 60)}"
+
+${list}
+
+> These are **real search results** fetched just now (DuckDuckGo, ${search.elapsed}).
+> Add an xAI API key in Settings and Grok will read the sources and synthesize a full answer.`);
         }
         return streamDemo(res, demoReply(lastUser?.content || '', features));
       }
 
+      /* ── Search context + citation instructions ── */
       const sysExtra = [];
-      if (features.search) sysExtra.push('Use live knowledge when relevant; cite sources when possible.');
+      if (search?.results.length) {
+        const ctx = search.results.map((r, i) => `[${i + 1}] ${r.title} — ${r.url}\n${r.snippet}`).join('\n\n')
+          + search.pages.map(p => `\n\n[page] ${p.url}\n${p.text}`).join('');
+        sysExtra.push(`Live web search results fetched ${new Date().toISOString()} (cite as [n] where used):\n\n${ctx}`);
+      }
       if (features.think) sysExtra.push('Think carefully before answering. Prefer rigorous reasoning.');
       const allMsgs = sysExtra.length
-        ? [{ role: 'system', content: sysExtra.join(' ') }, ...messages]
+        ? [{ role: 'system', content: sysExtra.join('\n\n') }, ...messages]
         : messages;
+
+      /* ── REAL connectors: agentic tool-calling loop over public APIs ── */
+      const validConns = (Array.isArray(connectors) ? connectors : []).filter(c => TOOL_DEFS[c]);
+      if (validConns.length) {
+        try {
+          const content = await toolLoop(res, { apiKey, baseUrl, model,
+            messages: allMsgs, connectors: validConns, ghToken: githubToken });
+          for (const chunk of content.match(/[\s\S]{1,8}/g) || []) {
+            res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+            await new Promise(r => setTimeout(r, 6));
+          }
+          appendSources(res, search);
+          res.write('data: [DONE]\n\n');
+          return res.end();
+        } catch (e) {
+          res.write(`data: ${JSON.stringify({ delta: `Tool loop error: ${e.message}\n\nFalling back to direct answer.\n\n` })}\n\n`);
+        }
+      }
 
       const url = baseUrl || XAI_CHAT;
       const upstream = await fetch(url, {
@@ -301,6 +533,7 @@ async function handleChat(req, res) {
           } catch {}
         }
       }
+      appendSources(res, search);
       res.write('data: [DONE]\n\n');
       res.end();
     } catch (e) {
@@ -311,6 +544,16 @@ async function handleChat(req, res) {
       } catch {}
     }
   });
+}
+
+/* Append verified real sources under the model answer */
+function appendSources(res, search) {
+  if (!search?.results?.length) return;
+  const list = search.results.map((r, i) => {
+    let host = ''; try { host = new URL(r.url).hostname.replace(/^www\./, ''); } catch {}
+    return `${i + 1}. [${r.title || host}](${r.url})`;
+  }).join('\n');
+  res.write(`data: ${JSON.stringify({ delta: `\n\n---\n**Sources**\n${list}\n` })}\n\n`);
 }
 
 function demoImage(prompt, ratio, i) {

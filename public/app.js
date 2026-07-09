@@ -33,12 +33,10 @@ const SKILLS = [
 let activeSkill = localStorage.getItem('acs.skill') || '';
 
 const CONNECTORS = [
-  { id: 'github',   ic: 'github',     name: 'GitHub',       desc: 'Repos, issues & PRs' },
-  { id: 'gdrive',   ic: 'hard-drive', name: 'Google Drive', desc: 'Docs & sheets' },
-  { id: 'gmail',    ic: 'mail',       name: 'Gmail',        desc: 'Search & summarize mail' },
-  { id: 'calendar', ic: 'calendar',   name: 'Calendar',     desc: 'Events & scheduling' },
-  { id: 'notion',   ic: 'book-open',  name: 'Notion',       desc: 'Pages & databases' },
-  { id: 'x',        ic: 'link-2',     name: 'X',            desc: 'Posts & trends' },
+  { id: 'web',     ic: 'globe',      name: 'Web browsing', desc: 'Live search & read any webpage (DuckDuckGo, no key)' },
+  { id: 'github',  ic: 'github',     name: 'GitHub',       desc: 'Search repos/issues/code, read files (real REST API)', token: true },
+  { id: 'weather', ic: 'cloud',      name: 'Weather',      desc: 'Current conditions & forecast (Open-Meteo, no key)' },
+  { id: 'hn',      ic: 'zap',        name: 'Hacker News',  desc: 'Search HN stories (Algolia API, no key)' },
 ];
 let connectedIds = JSON.parse(localStorage.getItem('acs.connectors') || '[]');
 
@@ -487,8 +485,9 @@ async function streamReply(c) {
   }
   const cu = buildCustomSystem(); if (cu) sysParts.push(cu);
   if (connectedIds.length) {
-    sysParts.push('Connected apps: ' + connectedIds.map(id =>
-      (CONNECTORS.find(x => x.id === id) || {}).name).filter(Boolean).join(', ') + ' (demo).');
+    sysParts.push('You have REAL tools available for these connected apps: ' + connectedIds.map(id =>
+      (CONNECTORS.find(x => x.id === id) || {}).name).filter(Boolean).join(', ') +
+      '. Call them whenever they can improve the answer; results come from live public APIs.');
   }
   if (sysParts.length) outMsgs = [{ role: 'system', content: sysParts.join('\n\n') }, ...outMsgs];
 
@@ -501,6 +500,8 @@ async function streamReply(c) {
         apiKey, baseUrl, messages: outMsgs,
         agents: /heavy/i.test(reqModel) ? activeAgents() : undefined,
         agentCount: prefs.agentCount || 4,
+        connectors: connectedIds,
+        githubToken: localStorage.getItem('acs.ghToken') || '',
       }),
     });
     const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = '';
@@ -823,24 +824,41 @@ function renderSkills() {
 /* Connectors */
 function renderConnectors() {
   const list = $('#connList'); list.innerHTML = '';
+  const ghToken = localStorage.getItem('acs.ghToken') || '';
   CONNECTORS.forEach(c => {
     const on = connectedIds.includes(c.id);
     const d = document.createElement('div');
     d.className = 'conn-item';
+    const tokenBtn = c.token
+      ? `<button class="btn-outline conn-token" type="button" title="Optional token for private repos & higher rate limits">
+          ${ghToken ? icon('circle-check') + ' Token' : 'Token'}</button>` : '';
     d.innerHTML = `<span class="conn-ic">${icon(c.ic)}</span>
       <div class="p-info"><div class="p-name">${c.name}</div><div class="p-meta">${c.desc}</div></div>
+      ${tokenBtn}
       <button class="btn-outline conn-btn ${on ? 'on' : ''}" type="button">
-        ${on ? icon('circle-check') + ' Connected' : 'Connect'}</button>`;
-    d.querySelector('.conn-btn').onclick = async e => {
-      const btn = e.currentTarget;
+        ${on ? icon('circle-check') + ' Enabled' : 'Enable'}</button>`;
+    d.querySelector('.conn-btn').onclick = () => {
       if (on) connectedIds = connectedIds.filter(x => x !== c.id);
-      else {
-        btn.textContent = 'Authorizing…';
-        await new Promise(r => setTimeout(r, 700));
-        connectedIds.push(c.id);
-      }
+      else connectedIds.push(c.id);
       localStorage.setItem('acs.connectors', JSON.stringify(connectedIds));
       renderConnectors(); updateConnBanner();
+    };
+    const tb = d.querySelector('.conn-token');
+    if (tb) tb.onclick = async () => {
+      const t = prompt('GitHub personal access token (blank to clear).\nUsed only from this browser via the local proxy:', ghToken);
+      if (t === null) return;
+      const tok = t.trim();
+      if (!tok) { localStorage.removeItem('acs.ghToken'); renderConnectors(); return; }
+      tb.textContent = 'Verifying…';
+      try {   /* REAL verification against GitHub API */
+        const r = await fetch('https://api.github.com/user',
+          { headers: { Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github+json' } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const u = await r.json();
+        localStorage.setItem('acs.ghToken', tok);
+        alert('Token verified — signed in as ' + u.login);
+      } catch (e) { alert('Token invalid: ' + e.message); }
+      renderConnectors();
     };
     list.append(d);
   });
