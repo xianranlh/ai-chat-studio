@@ -33,6 +33,7 @@
     <a class="nav-link" data-view="imagine" role="button"><span data-ic="images"></span>Imagine</a>
     <a class="nav-link" data-view="skills" role="button"><span data-ic="puzzle"></span>Skills</a>
     <a class="nav-link" data-view="connectors" role="button"><span data-ic="blocks"></span>Connectors</a>
+    <a class="nav-link" data-view="projects" role="button"><span data-ic="folder"></span>Projects</a>
   </nav>
 
   <div class="side-scroll">
@@ -57,6 +58,9 @@
   <header id="topbar">
     <button id="btnSide" class="icon-btn" title="Sidebar" data-ic="panel-left"></button>
     <div class="spacer"></div>
+    <button id="btnShare" class="top-link" type="button" title="Share chat">
+      <span data-ic="share"></span><s>Share</s>
+    </button>
     <button id="btnPrivate" class="top-link" type="button" title="Temporary chat">
       <span data-ic="eye-off"></span><s>Private</s>
     </button>
@@ -217,6 +221,7 @@
       <button class="set-tab" type="button" data-tab="appearance"><span data-ic="palette"></span>Appearance</button>
       <button class="set-tab" type="button" data-tab="customize"><span data-ic="sparkles"></span>Customize</button>
       <button class="set-tab" type="button" data-tab="data"><span data-ic="database"></span>Data controls</button>
+      <button class="set-tab" type="button" data-tab="usage"><span data-ic="chart-column"></span>Usage</button>
     </aside>
 
     <button id="dlgClose" class="icon-btn dlg-x" type="button" title="Close" data-ic="x"></button>
@@ -333,10 +338,34 @@
           <button id="btnResetAll" class="btn-danger" type="button"><span data-ic="triangle-alert"></span>Reset</button>
         </div>
       </section>
+
+      <section class="set-panel" data-panel="usage">
+        <h3>Usage</h3>
+        <p class="hint">Estimated locally from chat history (1 token ≈ 4 chars / 1.5 CJK).</p>
+        <div class="usage-grid" id="usageStats"></div>
+        <h4 class="usage-h4">Messages · last 14 days</h4>
+        <div id="usageChart" class="chart-box"></div>
+        <h4 class="usage-h4">Tokens by mode</h4>
+        <div class="chart-row">
+          <div id="usageDonut" class="chart-donut"></div>
+          <div id="usageLegend" class="chart-legend"></div>
+        </div>
+      </section>
     </div>
   </div>
 </dialog>
 
-<script src="app.js?v=15" defer></script>
+<!-- ═══ Projects dialog ═══ -->
+<dialog id="dlgProjects" class="picker-dlg">
+  <header class="picker-head">
+    <div class="picker-title"><span data-ic="folder"></span> Projects</div>
+    <button class="icon-btn" type="button" data-close="dlgProjects" data-ic="x"></button>
+  </header>
+  <p class="hint">Organize chats into folders. Open a project to filter its chats; use the folder action on a chat to move it.</p>
+  <div id="projList" class="conn-list"></div>
+  <button id="btnAddProj" class="btn-outline" type="button" style="margin-top:12px"><span data-ic="plus"></span>New project</button>
+</dialog>
+
+<script src="app.js?v=16" defer></script>
 </body>
 </html>

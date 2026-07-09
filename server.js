@@ -373,9 +373,70 @@ async function handleImage(req, res) {
   });
 }
 
+/* ---------- Share: store & serve read-only snapshots ---------- */
+const SHARES = path.join(__dirname, 'shares');
+function handleShare(req, res) {
+  let body = '';
+  req.on('data', d => { body += d; if (body.length > 2e6) req.destroy(); });
+  req.on('end', () => {
+    try {
+      const { title = 'Shared chat', messages = [] } = JSON.parse(body);
+      if (!Array.isArray(messages) || !messages.length) throw new Error('empty');
+      const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+      fs.mkdirSync(SHARES, { recursive: true });
+      fs.writeFileSync(path.join(SHARES, id + '.json'), JSON.stringify({
+        title: String(title).slice(0, 120),
+        date: new Date().toISOString(),
+        messages: messages.slice(0, 200).map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: String(m.content || '').slice(0, 50000),
+        })),
+      }));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ id }));
+    } catch (e) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+  });
+}
+function serveShare(req, res, id) {
+  if (!/^[a-z0-9]{6,24}$/.test(id)) { res.writeHead(404); return res.end('Not Found'); }
+  fs.readFile(path.join(SHARES, id + '.json'), 'utf8', (err, raw) => {
+    if (err) { res.writeHead(404); return res.end('Share not found or expired'); }
+    let j; try { j = JSON.parse(raw); } catch { res.writeHead(500); return res.end(); }
+    const escH = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const msgs = j.messages.map(m => `
+      <div class="m ${m.role}"><div class="who">${m.role === 'user' ? 'You' : 'Grok'}</div>
+      <div class="body">${escH(m.content)}</div></div>`).join('');
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(`<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>${escH(j.title)} — Shared</title><style>
+  body{margin:0;background:#000;color:#e7e9ea;font:15px/1.7 ui-sans-serif,system-ui,'PingFang SC',sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:32px 20px 60px}
+  h1{font-size:21px;margin:0 0 4px}
+  .date{color:#71767b;font-size:12.5px;margin-bottom:28px}
+  .m{margin:18px 0}
+  .who{font-size:12px;color:#71767b;font-weight:600;margin-bottom:4px}
+  .m.user .body{background:#202327;border:1px solid #2f3336;border-radius:16px;padding:10px 15px;display:inline-block;max-width:85%}
+  .m .body{white-space:pre-wrap;word-break:break-word}
+  .foot{margin-top:44px;padding-top:16px;border-top:1px solid #2f3336;color:#71767b;font-size:12.5px}
+  .foot a{color:#1d9bf0;text-decoration:none}
+</style></head><body><div class="wrap">
+<h1>${escH(j.title)}</h1><div class="date">Shared · ${escH(j.date.slice(0, 10))} · read-only</div>
+${msgs}
+<div class="foot">Shared from <a href="/">Grok</a></div>
+</div></body></html>`);
+  });
+}
+
 http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/api/chat') return handleChat(req, res);
   if (req.method === 'POST' && req.url === '/api/image') return handleImage(req, res);
+  if (req.method === 'POST' && req.url === '/api/share') return handleShare(req, res);
+  const shareMatch = req.url.match(/^\/s\/([a-z0-9]+)$/);
+  if (req.method === 'GET' && shareMatch) return serveShare(req, res, shareMatch[1]);
   let p = path.normalize(path.join(
     PUB,
     req.url === '/' ? 'index.html' : decodeURIComponent(req.url.split('?')[0]),

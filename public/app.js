@@ -158,11 +158,25 @@ function groupLabel(ts) {
 }
 function renderConvs() {
   const list = $('#convList'); list.innerHTML = '';
-  const items = convs.filter(c => !c.private && (!convFilter ||
+  let items = convs.filter(c => !c.private && (!convFilter ||
     (c.title || '').toLowerCase().includes(convFilter) ||
     c.messages.some(m => (m.content || '').toLowerCase().includes(convFilter))));
+
+  /* Project filter view */
+  if (activeProj) {
+    const p = projects.find(x => x.id === activeProj);
+    if (p) {
+      items = items.filter(c => c.proj === activeProj);
+      const head = document.createElement('div'); head.className = 'proj-head';
+      head.innerHTML = `${icon('folder')}<b>${esc(p.name)}</b><span>${items.length} chats</span>
+        <button title="Exit project">${icon('x')}</button>`;
+      head.querySelector('button').onclick = () => { activeProj = ''; renderConvs(); };
+      list.append(head);
+    } else activeProj = '';
+  }
+
   $('#convEmpty').classList.toggle('hidden', !!items.length);
-  $('#convEmpty').textContent = convFilter ? 'No matches' : 'No conversations';
+  $('#convEmpty').textContent = convFilter ? 'No matches' : (activeProj ? 'No chats in this project' : 'No conversations');
 
   let lastLabel = null, bucket = [];
   const flush = () => {
@@ -180,13 +194,17 @@ function renderConvs() {
 function convItemEl(c) {
   const div = document.createElement('div');
   div.className = 'conv-item' + (c.id === curId ? ' active' : '');
+  const projTag = c.proj && !activeProj
+    ? `<span class="conv-proj">${esc((projects.find(p => p.id === c.proj) || {}).name || '')}</span>` : '';
   div.innerHTML = `<span class="conv-ic">${icon('message-square')}</span>
-    <span class="conv-title">${esc(c.title || 'New chat')}</span>
+    <span class="conv-title">${esc(c.title || 'New chat')}${projTag}</span>
     <span class="conv-ops">
+      <button data-op="proj" title="Move to project">${icon('folder')}</button>
       <button data-op="rename" title="Rename">${icon('pen-square')}</button>
       <button data-op="del" title="Delete">${icon('trash-2')}</button>
     </span>`;
   div.onclick = () => { curId = c.id; save(); renderConvs(); renderChat(); };
+  div.querySelector('[data-op=proj]').onclick = e => { e.stopPropagation(); assignProj(c); };
   div.querySelector('[data-op=rename]').onclick = e => {
     e.stopPropagation();
     const t = prompt('Rename', c.title || 'New chat');
@@ -199,6 +217,57 @@ function convItemEl(c) {
     save(); renderConvs(); renderChat();
   };
   return div;
+}
+
+/* ── Projects ── */
+let projects = JSON.parse(localStorage.getItem('acs.projects') || '[]');
+let activeProj = '';
+const saveProjects = () => localStorage.setItem('acs.projects', JSON.stringify(projects));
+function assignProj(c) {
+  if (!projects.length) {
+    const name = prompt('No projects yet. Name your first project:');
+    if (!name?.trim()) return;
+    projects.push({ id: 'pj-' + Date.now(), name: name.trim() }); saveProjects();
+  }
+  const menu = projects.map((p, i) => `${i + 1}. ${p.name}`).join('\n');
+  const ans = prompt(`Move "${c.title || 'New chat'}" to which project?\n\n${menu}\n\nEnter number (0 = remove from project):`);
+  if (ans === null) return;
+  const n = parseInt(ans);
+  if (n === 0) delete c.proj;
+  else if (projects[n - 1]) c.proj = projects[n - 1].id;
+  save(); renderConvs();
+}
+function renderProjects() {
+  const list = $('#projList'); list.innerHTML = '';
+  if (!projects.length) list.innerHTML = '<p class="hint">No projects yet. Create one below.</p>';
+  projects.forEach(p => {
+    const count = convs.filter(c => c.proj === p.id).length;
+    const d = document.createElement('div');
+    d.className = 'conn-item';
+    d.innerHTML = `<span class="conn-ic">${icon('folder')}</span>
+      <div class="p-info"><div class="p-name">${esc(p.name)}</div><div class="p-meta">${count} chats</div></div>
+      <div class="p-acts">
+        <button data-a="open" title="Open">${icon('message-square')}</button>
+        <button data-a="edit" title="Rename">${icon('pen-square')}</button>
+        <button data-a="del" title="Delete">${icon('trash-2')}</button>
+      </div>`;
+    d.querySelector('[data-a=open]').onclick = () => {
+      activeProj = p.id; renderConvs(); $('#dlgProjects').close();
+      $('#sidebar').classList.remove('collapsed'); setNavActive('chat');
+    };
+    d.querySelector('[data-a=edit]').onclick = () => {
+      const t = prompt('Rename project', p.name);
+      if (t?.trim()) { p.name = t.trim(); saveProjects(); renderProjects(); renderConvs(); }
+    };
+    d.querySelector('[data-a=del]').onclick = () => {
+      if (!confirm(`Delete project "${p.name}"? Chats are kept, just unfiled.`)) return;
+      convs.forEach(c => { if (c.proj === p.id) delete c.proj; });
+      projects = projects.filter(x => x.id !== p.id);
+      if (activeProj === p.id) activeProj = '';
+      saveProjects(); save(); renderProjects(); renderConvs();
+    };
+    list.append(d);
+  });
 }
 
 /* Chat render */
@@ -339,7 +408,8 @@ async function send() {
   if (!cur()) {
     convs.unshift({
       id: Date.now() + '', title: '', mode: curMode().name,
-      ...(privateMode && { private: true }), messages: [],
+      ...(privateMode && { private: true }),
+      ...(activeProj && !privateMode && { proj: activeProj }), messages: [],
     });
     curId = convs[0].id;
   }
@@ -634,7 +704,19 @@ $$('.nav-link').forEach(a => a.onclick = () => {
     $('#dlgConnectors').showModal();
     return;
   }
+  if (v === 'projects') {
+    setNavActive('projects');
+    renderProjects();
+    $('#dlgProjects').showModal();
+    return;
+  }
 });
+$('#btnAddProj').onclick = () => {
+  const name = prompt('Project name:');
+  if (!name?.trim()) return;
+  projects.push({ id: 'pj-' + Date.now(), name: name.trim() });
+  saveProjects(); renderProjects();
+};
 
 function togglePrivate(on) {
   privateMode = on ?? !privateMode;
@@ -939,6 +1021,7 @@ function openSettings(tab) {
 function switchSetTab(tab) {
   $$('.set-tab[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   $$('.set-panel').forEach(s => s.classList.toggle('active', s.dataset.panel === tab));
+  if (tab === 'usage') buildUsage();
 }
 $$('.set-tab[data-tab]').forEach(b => b.onclick = () => switchSetTab(b.dataset.tab));
 $('#btnSettings').onclick = () => openSettings('account');
@@ -1188,6 +1271,100 @@ function buildCustomSystem() {
   }
   return parts.join('\n');
 }
+
+/* ── Usage (SVG charts, no deps) ── */
+function tokenEst(str) {
+  let en = 0, cn = 0;
+  for (const ch of str || '') (/[一-龥]/.test(ch) ? cn++ : en++);
+  return Math.round(cn / 1.5 + en / 4);
+}
+function buildUsage() {
+  let totalMsg = 0, tokIn = 0, tokOut = 0;
+  const byMode = {}, byDay = {};
+  convs.forEach(c => {
+    c.messages.forEach(m => {
+      totalMsg++;
+      const t = tokenEst(m.content);
+      if (m.role === 'user') tokIn += t;
+      else { tokOut += t; const mm = c.mode || 'Auto'; byMode[mm] = (byMode[mm] || 0) + t; }
+    });
+    const day = new Date(+c.id).toISOString().slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + c.messages.length;
+  });
+  const stat = (label, val, ic) => `<div class="usage-card">${icon(ic)}
+    <div class="usage-val">${val}</div><div class="usage-lbl">${label}</div></div>`;
+  $('#usageStats').innerHTML =
+    stat('Chats', convs.length, 'message-square') +
+    stat('Messages', totalMsg, 'sparkles') +
+    stat('Input tokens', tokIn.toLocaleString(), 'upload') +
+    stat('Output tokens', tokOut.toLocaleString(), 'download');
+
+  /* Bar chart: last 14 days */
+  const days = [];
+  for (let i = 13; i >= 0; i--) { const d = new Date(); d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10)); }
+  const vals = days.map(d => byDay[d] || 0);
+  const vmax = Math.max(1, ...vals);
+  const W = 560, H = 180, PB = 24, PL = 30, bw = (W - PL - 10) / 14;
+  let bars = '', grid = '', labels = '';
+  for (let i = 0; i <= 3; i++) {
+    const y = 10 + (H - PB - 10) * i / 3, v = Math.round(vmax * (3 - i) / 3);
+    grid += `<line x1="${PL}" y1="${y}" x2="${W - 6}" y2="${y}" class="cg-line"/>
+      <text x="${PL - 6}" y="${y + 4}" class="cg-ytick">${v}</text>`;
+  }
+  days.forEach((d, i) => {
+    const h = Math.max(vals[i] ? 4 : 0, (H - PB - 10) * vals[i] / vmax);
+    const x = PL + i * bw + bw * 0.18, y = H - PB - h;
+    bars += `<rect x="${x}" y="${y}" width="${bw * 0.64}" height="${h}" rx="4" class="cg-bar${vals[i] ? '' : ' zero'}">
+      <title>${d}: ${vals[i]} messages</title></rect>`;
+    if (i % 2 === 1) labels += `<text x="${PL + i * bw + bw / 2}" y="${H - 7}" class="cg-xtick">${d.slice(5).replace('-', '/')}</text>`;
+  });
+  $('#usageChart').innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${grid}${bars}${labels}</svg>`;
+
+  /* Donut: tokens by mode */
+  const entries = Object.entries(byMode).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+  if (!total) { $('#usageDonut').innerHTML = ''; $('#usageLegend').innerHTML = '<p class="hint">No data yet</p>'; return; }
+  const COLORS = ['#1d9bf0', '#8b7cf0', '#10a37f', '#f59e0b', '#e0245e', '#71767b'];
+  const R = 56, CX = 70, CY = 70, SW = 22, CIRC = 2 * Math.PI * R;
+  let off = 0, segs = '', legend = '';
+  entries.forEach(([name, v], i) => {
+    const frac = v / total, len = frac * CIRC, color = COLORS[i % COLORS.length];
+    segs += `<circle cx="${CX}" cy="${CY}" r="${R}" fill="none" stroke="${color}" stroke-width="${SW}"
+      stroke-dasharray="${Math.max(0, len - 2)} ${CIRC - len + 2}" stroke-dashoffset="${-off}"
+      transform="rotate(-90 ${CX} ${CY})"><title>${name}: ${Math.round(frac * 100)}%</title></circle>`;
+    off += len;
+    legend += `<div class="lg-item"><i style="background:${color}"></i>
+      <span class="lg-name">${esc(name)}</span>
+      <span class="lg-val">${v.toLocaleString()} · ${Math.round(frac * 100)}%</span></div>`;
+  });
+  $('#usageDonut').innerHTML = `<svg viewBox="0 0 140 140">${segs}
+    <text x="${CX}" y="${CY - 4}" class="dn-total">${total > 9999 ? (total / 1000).toFixed(1) + 'k' : total}</text>
+    <text x="${CX}" y="${CY + 14}" class="dn-sub">tokens</text></svg>`;
+  $('#usageLegend').innerHTML = legend;
+}
+
+/* ── Share chat ── */
+$('#btnShare').onclick = async () => {
+  const c = cur();
+  if (!c || !c.messages.length) return alert('Nothing to share yet.');
+  if (c.private) return alert('Private chats cannot be shared.');
+  const btn = $('#btnShare');
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/api/share', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: c.title || 'Shared chat',
+        messages: c.messages.map(({ role, content }) => ({ role, content })) }) });
+    const j = await resp.json();
+    if (!j.id) throw new Error(j.error || 'share failed');
+    const url = location.origin + '/s/' + j.id;
+    await navigator.clipboard.writeText(url).catch(() => {});
+    prompt('Share link (copied to clipboard):', url);
+  } catch (e) { alert('Share failed: ' + e.message); }
+  finally { btn.disabled = false; }
+};
 
 /* Data */
 function downloadFile(name, content) {
